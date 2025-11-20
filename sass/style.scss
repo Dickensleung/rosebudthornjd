@@ -100,3 +100,19 @@ Nicolas Gallagher and Jonathan Neal https://necolas.github.io/normalize.css/
 /* Alignments
 --------------------------------------------- */
 @import "utilities/alignments";
+
+/* Child Theme User Page Layout
+--------------------------------------------- */
+
+@import "pages/front-page";
+
+/* Styling for Dashboard Layout
+--------------------------------------------- */
+
+@import "pages/dashboard";
+
+/* Styling for User Entry Layout
+--------------------------------------------- */
+
+@import "pages/new-entry";
+

@@ -176,3 +176,147 @@ if ( defined( 'JETPACK__VERSION' ) ) {
 	require get_template_directory() . '/inc/jetpack.php';
 }
 
+// Register Rose Bud Thorn Entry CPT
+function rbt_register_entry_cpt() {
+    $labels = array(
+        'name'               => 'RBT Entries',
+        'singular_name'      => 'RBT Entry',
+        'add_new'            => 'Add New Entry',
+        'add_new_item'       => 'Add New RBT Entry',
+        'edit_item'          => 'Edit RBT Entry',
+        'new_item'           => 'New RBT Entry',
+        'view_item'          => 'View RBT Entry',
+        'search_items'       => 'Search RBT Entries',
+        'not_found'          => 'No entries found',
+        'not_found_in_trash' => 'No entries found in Trash',
+        'menu_name'          => 'Rose Bud Thorn'
+    );
+
+    $args = array(
+        'labels'             => $labels,
+        'public'             => true,
+        'show_in_rest'       => true,
+        'supports'           => array( 'title' ),
+        'has_archive'        => true,
+        'menu_position'      => 5,
+        'menu_icon'          => 'dashicons-heart',
+
+		// 🔒 Extra privacy
+		'exclude_from_search' => true,      // don't show in WP search
+		'publicly_queryable'  => true,      // still allow front-end views (we lock them ourselves)
+		'show_in_nav_menus'   => false,     // can't accidentally add to menus
+    );
+    register_post_type( 'rbt_entry', $args );
+}
+add_action( 'init', 'rbt_register_entry_cpt' );
+
+//function handles page-RBT New Entry
+function rbt_handle_new_entry_form() {
+	if (
+		$_SERVER['REQUEST_METHOD'] === 'POST'
+		&& isset($_POST['rbt_form_nonce'])
+		&& wp_verify_nonce($_POST['rbt_form_nonce'], 'rbt_new_entry')
+	) {
+		$rose   = isset($_POST['rbt_rose']) ? sanitize_textarea_field($_POST['rbt_rose']) : '';
+		$bud    = isset($_POST['rbt_bud']) ? sanitize_textarea_field($_POST['rbt_bud']) : '';
+		$thorn  = isset($_POST['rbt_thorn']) ? sanitize_textarea_field($_POST['rbt_thorn']) : '';
+		$stage  = isset($_POST['rbt_stage']) ? sanitize_text_field($_POST['rbt_stage']) : '';
+		$action = isset($_POST['rbt_suggested_action']) ? sanitize_textarea_field($_POST['rbt_suggested_action']) : '';
+
+		// Basic guard: don't save completely empty entries
+		if ( $rose || $bud || $thorn ) {
+			$timestamp = current_time('timestamp'); // raw Unix timestamp
+			
+			// Create the RBT entry post
+			$post_id = wp_insert_post(array(
+				'post_type'   => 'rbt_entry',
+				'post_status' => 'publish',
+				'post_title'  => 'RBT Entry ' . wp_date('M-j, Y H:i', $timestamp),
+    			'post_date'   => wp_date('Y-m-d H:i', $timestamp),
+			));
+
+
+			if ( ! is_wp_error($post_id) ) {
+				// ACF fields (using FIELD NAMES from your ACF group)
+				update_field('rose', $rose, $post_id);
+				update_field('bud', $bud, $post_id);
+				update_field('thorn', $thorn, $post_id);
+				update_field('stage', $stage, $post_id);
+				update_field('suggested_action', $action, $post_id);
+				// Save ACF timestamp field
+				update_field('rbt_timestamp', $timestamp, $post_id);
+
+				// Redirect to avoid resubmission on refresh
+				wp_redirect( add_query_arg('rbt_saved', '1', get_permalink()) );
+				exit;
+			}
+		}
+	}
+}
+rbt_handle_new_entry_form();
+
+//PRIVACY function handles privacy for all entries "lock the RBT area" 
+function rbt_restrict_rbt_content() {
+    // Don't interfere with wp-admin
+    if ( is_admin() ) {
+        return;
+    }
+
+    // Slugs of your RBT pages – adjust if different
+    $protected_pages = array(
+        'rbt-dashboard',   // your dashboard page slug
+        'rbt-new-entry',   // your new entry page slug
+    );
+
+    $is_rbt_page =
+        is_page( $protected_pages ) ||
+        is_singular( 'rbt_entry' ) ||          // single RBT entries
+        is_post_type_archive( 'rbt_entry' );   // if you ever use an archive
+
+    if ( $is_rbt_page && ! is_user_logged_in() ) {
+        // Sends user to login and then back to the page they tried to access
+        auth_redirect();
+    }
+}
+add_action( 'template_redirect', 'rbt_restrict_rbt_content' );
+
+//PRIVACY Add noindex meta tags for RBT pages + entries
+function rbt_noindex_private_pages() {
+    if ( is_admin() ) {
+        return;
+    }
+
+    // Same slugs you used in rbt_restrict_rbt_content()
+    $protected_pages = array(
+        'rbt-dashboard',
+        'rbt-new-entry',
+    );
+
+    if (
+        is_page( $protected_pages ) ||
+        is_singular( 'rbt_entry' ) ||
+        is_post_type_archive( 'rbt_entry' )
+    ) {
+        echo '<meta name="robots" content="noindex, nofollow" />' . "\n";
+    }
+}
+add_action( 'wp_head', 'rbt_noindex_private_pages' );
+
+//PRIVACY Lock the REST API for RBT entries (logged-in only)
+function rbt_lock_rest_rbt_entries( $result, $server, $request ) {
+    $route = $request->get_route();
+
+    // Only care about rbt_entry routes
+    if ( strpos( $route, '/wp/v2/rbt_entry' ) !== false ) {
+        if ( ! is_user_logged_in() ) {
+            return new WP_Error(
+                'rest_forbidden',
+                __( 'You are not allowed to access RBT entries.', 'rbt' ),
+                array( 'status' => 401 )
+            );
+        }
+    }
+
+    return $result;
+}
+add_filter( 'rest_pre_dispatch', 'rbt_lock_rest_rbt_entries', 10, 3 );
