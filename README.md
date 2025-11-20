@@ -48,11 +48,5 @@ Protected from Google indexing (noindex, nofollow)
 
 Locked REST API (RBT data accessible only to logged-in users)
 
-/theme
-  ├── functions.php
-  ├── page-rbt-dashboard.php     # front-end dashboard
-  ├── page-rbt-new-entry.php     # front-end entry form
-  ├── single-rbt_entry.php       # single RBT entry view
-  ├── acf-json/                  # (optional) ACF field group export
 
 
